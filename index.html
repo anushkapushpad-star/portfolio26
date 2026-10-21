@@ -1,0 +1,880 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Cross-Stitch Banner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+  /* Layout: one full-bleed banner at the top of a desktop page; portrait centred, standing on the bottom edge, head top at 30% height.
+     The stitch field covers the whole banner. */
+  :root {
+    --bg: #FFFFFF;          /* white ground */
+    --page: #FFFFFF;        /* placeholder for the page content under the banner */
+    --grain: 0.15;          /* grain layer opacity over the whole banner */
+    --btn-bg: rgba(255, 255, 255, 0.55);
+    --btn-fg: #2E2F31;
+    --btn-ring: rgba(46, 47, 49, 0.18);
+    color-scheme: light;
+  }
+  /* Charcoal mode, switched by the corner button (kept separate from the viewer's own theme). */
+  :root[data-mode="dark"] {
+    --bg: #121213;
+    --page: #0E0E0F;
+    --btn-bg: rgba(0, 0, 0, 0.35);
+    --btn-fg: #E6E4DF;
+    --btn-ring: rgba(255, 255, 255, 0.16);
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body { background: var(--bg); margin: 0; }
+
+  .banner {
+    position: relative;
+    width: 100%;
+    height: clamp(480px, 72vh, 860px);
+    background: var(--bg);
+    overflow: hidden;
+    isolation: isolate;
+    touch-action: none;     /* finger drags stitch instead of scrolling */
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .banner canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+
+  /* Sky gradient behind everything: drawn small and scaled up with hard edges, so it reads slightly pixelated. */
+  .banner canvas#skybg { image-rendering: pixelated; image-rendering: crisp-edges; }
+
+  .portrait {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    height: 70%;            /* leaves the top 30% of the banner empty above the head */
+    width: auto;
+    max-width: none;
+    transform: translateX(-50%);
+    filter: contrast(0.94) brightness(0.96);
+    pointer-events: none;
+    -webkit-user-drag: none;
+  }
+
+  .grain {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    mix-blend-mode: overlay;
+    opacity: var(--grain);
+    background-size: 256px 256px;
+  }
+
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  .mode-toggle {
+    position: absolute;
+    top: 16px;
+    right: max(16px, env(safe-area-inset-right, 0px));
+    z-index: 2;
+    width: 36px; height: 36px;
+    display: grid; place-items: center;
+    padding: 0;
+    border: 1px solid var(--btn-ring);
+    border-radius: 50%;
+    background: var(--btn-bg);
+    color: var(--btn-fg);
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    transition: background 0.2s, transform 0.2s;
+  }
+  .mode-toggle:hover { transform: scale(1.06); }
+  .mode-toggle:focus-visible { outline: 2px solid var(--btn-fg); outline-offset: 2px; }
+  .mode-toggle svg { width: 18px; height: 18px; }
+  .mode-toggle .sun { display: none; }
+  :root[data-mode="dark"] .mode-toggle .sun { display: block; }
+  :root[data-mode="dark"] .mode-toggle .moon { display: none; }
+
+  .below {
+    min-height: 40vh;
+    background: var(--page);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+</style>
+
+<header class="banner" id="banner">
+  <canvas id="skybg" aria-hidden="true"></canvas>
+  <canvas id="grid" aria-hidden="true"></canvas>
+  <img class="portrait" src="assets/portrait.webp" alt="Greyscale portrait of a smiling woman with long dark hair in a white sleeveless top" draggable="false">
+  <canvas id="dissolve" aria-hidden="true"></canvas>
+  <canvas id="stitches" aria-hidden="true"></canvas>
+  <canvas id="nametext" aria-hidden="true"></canvas>
+  <h1 class="sr-only">Hi, I'm Anushka</h1>
+  <canvas id="bird" aria-hidden="true"></canvas>
+  <div class="grain" id="grain" aria-hidden="true"></div>
+  <button class="mode-toggle" id="modeToggle" type="button" aria-label="Switch to charcoal mode" aria-pressed="false">
+    <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+    <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
+  </button>
+</header>
+<main class="below" aria-label="Page content placeholder"></main>
+
+<script>
+  // ---- Settings ----------------------------------------------------------
+  const COLS = 90;             // cells across the banner width
+  const FIELD_W = 1;            // stitch field width, share of banner width (centred)
+  const FIELD_TOP = 0;       // stitch field top, share of banner height (runs to the bottom edge)
+  const BRUSH = 6;            // brush radius in cells
+  const LIFE = 6000;            // ms a stitch lasts after the cursor passes: 5 s solid, then the fade
+  const FADE = 1000;             // ms of that spent fading out
+  // Portrait layer: one red, from pale tint (highlights) to deep shade (shadows).
+  const SUB = 2;               // fine stitches per cell side over the person
+  // Colours per mode. In charcoal the portrait is stitched from its light: bright areas get the heaviest, palest
+  // thread and shadows thin, dim strokes, so she still reads the right way round on a dark ground.
+  const MODES = {
+    light: { tint: [206, 118, 110], shade: [140, 32, 36], paper: '#FFFFFF', invert: false,
+             skyTones: [[255, 255, 255], [255, 255, 255], [255, 255, 255], [255, 255, 255]],
+             word: '#173F80', wordText: '#173F80', wordSmall: '#3F7FCB', sky: '#4A9BD9', skyLight: '#A6D3F1', cloudWarm: '#F4BC86', cloudShade: '#B4A2DC', skyPale: '#BFD7F3', skyWhite: '#E4F2FC', skyShadow: 'rgba(30, 60, 120, 0.22)', grid: 'rgba(0,0,0,0.022)', bird: '#D64A42', birdShadow: 'rgba(60, 20, 20, 0.18)' },
+    // Charcoal is fully greyscale: only the portrait stitches and the dove keep their colour.
+    dark:  { tint: [110, 44, 46], shade: [240, 168, 158], paper: '#121213', invert: true,
+             skyTones: [[14, 14, 15], [17, 17, 18], [20, 20, 21], [23, 23, 24]],
+             word: '#E0574F', wordText: '#E6E6E6', wordSmall: '#A0A1A4', sky: '#5C5D61', skyLight: '#8E8F92', cloudWarm: '#8E8F92', cloudShade: '#66676A', skyPale: '#8E8F92', skyWhite: '#D9D9DA', skyShadow: 'rgba(0, 0, 0, 0.35)', grid: 'rgba(255,255,255,0.035)', bird: '#E0574F', birdShadow: 'rgba(0, 0, 0, 0)' },
+  };
+  let M = MODES.light;
+
+  const banner = document.getElementById('banner');
+  const portrait = document.querySelector('.portrait');
+  const gridCanvas = document.getElementById('grid');
+  const stitchCanvas = document.getElementById('stitches');
+  const gctx = gridCanvas.getContext('2d');
+  const sctx = stitchCanvas.getContext('2d');
+  const skyCanvas = document.getElementById('skybg');
+  const kctx = skyCanvas.getContext('2d');
+  const SKY_PX = 7;             // size of one background sky pixel, in CSS px
+  const dissolveCanvas = document.getElementById('dissolve');
+  const dctx = dissolveCanvas.getContext('2d');
+  const nameCanvas = document.getElementById('nametext');
+  const nctx = nameCanvas.getContext('2d');
+  const birdCanvas = document.getElementById('bird');
+  const bctx = birdCanvas.getContext('2d');
+
+  let W = 0, H = 0, DPR = 1, cell = 6, rows = 0;
+  let field = { c0: 0, c1: 0, r0: 0, r1: 0 };
+  let cols = 0, tone = null, person = null;  // tone per fine stitch: -1 outside the person, else 0 (light) .. 1 (dark)
+                                             // person per cell: how many of its fine stitches fall on the person
+
+  // ---- Helpers -------------------------------------------------------------
+  // Integer hash -> [0,1). Same cell always gives the same value.
+  function hash(x, y, s) {
+    let h = (x * 374761393 + y * 668265263 + s * 2147483647) | 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  }
+
+  // ---- Sky: a pixel-dithered cloudscape in one blue ----------------------
+  // Every fine stitch outside the person gets a density, 0 (bare) to 1 (solid). An ordered dither decides
+  // which are sewn, so dense sky, bright billowing cloud tops and the hazy lower bank read like a halftone.
+  const SKY_DENSITY = 1.9;     // sky stitches per cell side: about 8.4px apart on a 1440px banner
+  const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
+  let sky = null;
+
+  function noise(x, y, s) {
+    const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+    const sx = xf * xf * (3 - 2 * xf), sy = yf * yf * (3 - 2 * yf);
+    const a = hash(xi, yi, s), b = hash(xi + 1, yi, s), d = hash(xi, yi + 1, s), e = hash(xi + 1, yi + 1, s);
+    const top = a + (b - a) * sx, bot = d + (e - d) * sx;
+    return top + (bot - top) * sy;
+  }
+  function fbm(x, y, s) {
+    let v = 0, amp = 0.5, f = 1;
+    for (let o = 0; o < 5; o++) { v += amp * noise(x * f, y * f, s + o); amp *= 0.5; f *= 2; }
+    return v / 0.97;
+  }
+
+  // The sky is a halftone like the cloud reference: blue stitches dense in open sky, clouds left as bare
+  // cloth. There are many small clouds scattered across the banner, each about two or three brush
+  // strokes wide, so a viewer can uncover a whole one in a couple of moves. Each cloud is a cluster of
+  // round puffs on a flat base, shaded a little toward its underside. skyTime drives the background only.
+  let skyTime = 0, clouds = [];
+  function makeClouds() {
+    clouds = [];
+    const gx = 28.3, gy = 17.9;                                   // one cloud roughly every 28 x 18 cells
+    for (let row = 0, y0 = 4; y0 < rows + 6; row++, y0 += gy) {
+      for (let col = 0, x0 = hash(row, 0, 17) * gx - 6; x0 < cols + 10; col++, x0 += gx) {
+        const h = (a) => hash(col, row, a);
+        const w = 10.5 + 8 * h(1), ht = w * (0.4 + 0.16 * h(2));    // 10.5..18.5 cells wide
+        const cx = x0 + (h(3) - 0.5) * gx * 0.9, base = y0 + (h(4) - 0.5) * gy * 0.9 + ht * 0.6;  // loosely scattered
+        const puffs = [], n = 3 + Math.floor(h(5) * 3);
+        for (let i = 0; i < n; i++) {
+          const u = n === 1 ? 0.5 : i / (n - 1), hump = Math.sin(Math.PI * (0.15 + 0.7 * u));
+          const r = ht * (0.45 + 0.45 * hump) * (0.85 + 0.3 * hash(col * 7 + i, row, 9));
+          puffs.push({ x: cx - w / 2 + w * u, y: base - r * 0.75, r });
+        }
+        if (h(6) > 0.3) puffs.push({ x: cx + (h(7) - 0.5) * w * 0.3, y: base - ht * 0.95, r: ht * 0.5 });  // a crown on top
+        clouds.push({ base, ht, puffs, x0: cx - w, x1: cx + w, y0: base - ht * 2, y1: base + 1 });
+      }
+    }
+  }
+  function skyValue(X, Y) {
+    let v = 0.92 - 0.3 * Y / rows + 0.08 * (noise(X / 6, Y / 4, 141) - 0.5);   // open sky
+    for (const c of clouds) {
+      if (X < c.x0 || X > c.x1 || Y < c.y0 || Y > c.y1) continue;
+      let d = 9, near = null;
+      for (const q of c.puffs) { const dq = Math.hypot(X - q.x, Y - q.y) / q.r; if (dq < d) { d = dq; near = q; } }
+      const flat = Math.max(0, Y - c.base + 0.4) * 1.2;                         // flat base
+      const inside = Math.max(0, Math.min(1, (1.05 - d) / 0.3)) * Math.max(0, 1 - flat);
+      if (inside <= 0) continue;
+      // Light from the upper left: each puff is brightest on its upper-left face and turns into shadow
+      // on its lower right, and the whole cloud darkens toward its flat underside.
+      const nx = (X - near.x) / near.r, ny = (Y - near.y) / near.r;
+      const facing = Math.max(0, Math.min(1, 0.5 + 0.45 * ny + 0.3 * nx));
+      const under = Math.max(0, Math.min(1, (Y - (c.base - c.ht * 0.5)) / (c.ht * 0.5)));
+      const shade = 0.02 + 0.3 * facing * facing + 0.22 * under;
+      v = v * (1 - inside) + shade * inside;
+    }
+    return v;
+  }
+
+  let skyBuiltFor = '';
+  function buildSky() {
+    const fc = Math.ceil(cols * SKY_DENSITY), fr = Math.ceil(rows * SKY_DENSITY) + 1;
+    const key = fc + 'x' + fr + '@' + W + 'x' + H;
+    if (key === skyBuiltFor) return;                           // the sky is fixed; rebuild only on resize
+    skyBuiltFor = key;
+    sky = new Float32Array(fc * fr);
+    makeClouds();
+    // Puff up the cloud edges: where the map is between sky and cloud, rounded billows (from noise)
+    // push the cloud out into the sky or let the sky bite in, and the edge is firmed up so each puff
+    // reads as a soft rounded lobe instead of a ragged dither.
+    for (let y = 0; y < fr; y++) for (let x = 0; x < fc; x++) {
+      const X = x / SKY_DENSITY, Y = y / SKY_DENSITY;
+      let v = skyValue(X, Y);
+      const n1 = noise(X / 3.2, Y / 2.6, 151), n2 = noise(X / 1.6, Y / 1.3, 157);
+      const billow = 1 - Math.abs(2 * (0.65 * n1 + 0.35 * n2) - 1);      // 1 at the crown of a puff
+      const edge = 4 * v * (1 - v);                                       // strongest where sky meets cloud
+      v -= edge * 0.45 * (billow - 0.45);
+      if (v < 0.4) v += 0.16 * (1 - billow) ** 2 * (1 - v / 0.4);          // soft shade in the creases between puffs
+      v = v < 0.5 ? 0.5 * Math.pow(Math.max(0, 2 * v), 1.2) : 1 - 0.5 * Math.pow(Math.max(0, 2 - 2 * v), 1.2);
+      sky[y * fc + x] = Math.min(1, Math.max(0, v));
+    }
+  }
+
+  // ---- Layout ------------------------------------------------------------
+  function layout() {
+    W = banner.clientWidth; H = banner.clientHeight;
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    cell = W / COLS;
+    rows = Math.ceil(H / cell);
+    const fw = Math.round(COLS * FIELD_W);
+    field.c0 = Math.round((COLS - fw) / 2);
+    field.c1 = field.c0 + fw - 1;
+    field.r0 = Math.round(rows * FIELD_TOP);
+    field.r1 = rows - 1;
+    for (const cv of [gridCanvas, dissolveCanvas, stitchCanvas, nameCanvas, birdCanvas]) {
+      cv.width = Math.round(W * DPR);
+      cv.height = Math.round(H * DPR);
+    }
+    drawGrid();
+    sampleTone();
+    placeWords();
+    drawNameText();
+    clouds = [];
+    buildSky();
+    drawSkyBg();
+    live.clear();
+  }
+
+  // Shrink the portrait to one pixel per fine stitch (SUB x SUB per cell), exactly where CSS places it.
+  function sampleTone() {
+    cols = COLS;
+    const fc = cols * SUB, fr = rows * SUB;
+    tone = new Float32Array(fc * fr).fill(-1);
+    person = new Uint8Array(cols * rows);
+    if (!portrait.complete || !portrait.naturalWidth) return;
+    const ih = H * 0.70, iw = ih * portrait.naturalWidth / portrait.naturalHeight;
+    const ix = (W - iw) / 2, iy = H - ih, f = SUB / cell;
+    const off = document.createElement('canvas');
+    off.width = fc; off.height = fr;
+    const o = off.getContext('2d', { willReadFrequently: true });
+    o.imageSmoothingQuality = 'high';
+    o.drawImage(portrait, ix * f, iy * f, iw * f, ih * f);
+    const d = o.getImageData(0, 0, fc, fr).data;
+    for (let i = 0; i < fc * fr; i++) {
+      if (d[i * 4 + 3] < 24) continue;                         // include the soft, wispy edge of the hair
+      let L = d[i * 4] / 255;
+      L = Math.min(1, L * (1 + 0.15 * Math.min(1, Math.max(0, (L - 0.4) / 0.45))));  // lift highlights 15%
+      tone[i] = Math.min(1, Math.max(0, 1 - (L - 0.14) / 0.62));
+      person[Math.floor(Math.floor(i / fc) / SUB) * cols + Math.floor((i % fc) / SUB)]++;
+    }
+    buildDissolve(ix, iy, iw, ih);
+  }
+
+  // The bottom of the photo turns into greyscale cross-stitches, echoing the stitched sky above: the
+  // photo fades out smoothly across the band while stitches in its own greys build up over it, denser
+  // lower down, then thin out at the banner's bottom edge. No hard blocks, so there are no seams.
+  const DISSOLVE = 0.24;                                 // bottom share of the photo that dissolves
+  function buildDissolve(ix, iy, iw, ih) {
+    dctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    dctx.clearRect(0, 0, W, H);
+    const y0 = H - ih * DISSOLVE, fc = cols * SUB, s = cell / SUB;
+    const grad = `linear-gradient(to bottom, #000 ${((1 - DISSOLVE) * 100).toFixed(2)}%, rgba(0,0,0,0.35) ${((1 - DISSOLVE * 0.35) * 100).toFixed(2)}%, transparent 100%)`;
+    Object.assign(portrait.style, { maskImage: grad, webkitMaskImage: grad, maskSize: '', webkitMaskSize: '', maskPosition: '', webkitMaskPosition: '' });
+    for (let j = 0; j < rows * SUB; j++) {
+      const cy = (j + 0.5) * s;
+      if (cy < y0) continue;
+      const f = (cy - y0) / (H - y0);
+      const p = Math.min(1, (f / 0.55) ** 1.4) * (1 - 0.45 * Math.max(0, (f - 0.75) / 0.25));
+      for (let i = 0; i < fc; i++) {
+        const raw = tone[j * fc + i];
+        if (raw < 0 || hash(i, j, 223) > p) continue;
+        const g = Math.round((236 - 196 * raw) / 8) * 8;
+        const sp = stitchSprite(`#${((1 << 24) | (g << 16) | (g << 8) | g).toString(16).slice(1)}`);
+        dctx.drawImage(sp.cv, (i + 0.5) * s - sp.size / 2, cy - sp.size / 2, sp.size, sp.size);
+      }
+    }
+  }
+
+
+  // Faint grid inside the stitch field only, like a panel of aida cloth.
+  function drawGrid() {
+    gctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    gctx.clearRect(0, 0, W, H);
+    const x0 = field.c0 * cell, x1 = (field.c1 + 1) * cell;
+    const y0 = field.r0 * cell, y1 = H;
+    gctx.strokeStyle = M.grid;
+    gctx.lineWidth = 1 / DPR;
+    gctx.beginPath();
+    for (let c = field.c0; c <= field.c1 + 1; c++) { const x = c * cell; gctx.moveTo(x, y0); gctx.lineTo(x, y1); }
+    for (let r = field.r0; r * cell <= y1; r++) { const y = r * cell; gctx.moveTo(x0, y); gctx.lineTo(x1, y); }
+    gctx.stroke();
+  }
+
+  // ---- Stitching ---------------------------------------------------------
+  const live = new Map();      // key -> { c, r, t } time the stitch was laid
+  let last = null, running = false;
+
+  function stitchAt(px, py, now) {
+    const cc = px / cell, cr = py / cell;
+    const R = Math.ceil(BRUSH);
+    for (let r = Math.floor(cr) - R; r <= Math.floor(cr) + R; r++) {
+      if (r < field.r0 || r > field.r1) continue;
+      for (let c = Math.floor(cc) - R; c <= Math.floor(cc) + R; c++) {
+        if (c < field.c0 || c > field.c1) continue;
+        const dx = c + 0.5 - cc, dy = r + 0.5 - cr;
+        // Ragged brush edge, fixed per cell, so trails look hand-worked rather than round.
+        const reach = BRUSH * (0.65 + 0.55 * hash(c, r, 3));
+        if (dx * dx + dy * dy > reach * reach) continue;
+        live.set(c + ',' + r, { c, r, t: now });
+      }
+    }
+  }
+
+  function onMove(e) {
+    const rect = banner.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const now = performance.now();
+    // Fill the gap between pointer samples so fast moves leave a continuous trail.
+    if (last) {
+      const dist = Math.hypot(x - last.x, y - last.y);
+      const steps = Math.min(200, Math.ceil(dist / (cell * 1.2)));
+      for (let i = 1; i <= steps; i++) stitchAt(last.x + (x - last.x) * i / steps, last.y + (y - last.y) * i / steps, now);
+    } else {
+      stitchAt(x, y, now);
+    }
+    last = { x, y };
+    if (!running) { running = true; requestAnimationFrame(frame); }
+  }
+
+  // Over the person: each cell becomes SUB x SUB fine stitches; tone sets thread colour, weight and stitch type.
+  // Highlights get a short, thin, pale half stitch (/); mid-tones a fuller one; shadows a heavy navy cross.
+  function drawPortraitBacking(c, r, alpha) {
+    sctx.globalAlpha = alpha;
+    sctx.fillStyle = M.paper;
+    // Snap the backing to whole device pixels so neighbouring cells meet exactly, with no seam.
+    const bx0 = Math.floor(c * cell * DPR) / DPR, bx1 = Math.floor((c + 1) * cell * DPR) / DPR;
+    const by0 = Math.floor(r * cell * DPR) / DPR, by1 = Math.floor((r + 1) * cell * DPR) / DPR;
+    sctx.fillRect(bx0, by0, bx1 - bx0, by1 - by0);
+  }
+  function drawPortraitCell(c, r, alpha) {
+    sctx.globalAlpha = alpha;
+    const s = cell / SUB, fc = cols * SUB;
+    for (let j = 0; j < SUB; j++) for (let i = 0; i < SUB; i++) {
+      const raw = tone[(r * SUB + j) * fc + c * SUB + i];
+      if (raw < 0) continue;                                     // edge stitch that falls off the person
+      let t = M.invert ? 1 - raw : raw;
+      // On charcoal the darkest areas (her hair) would otherwise get thin, near-black strokes; give them
+      // full crosses in a dark maroon thread instead, so the hair reads as maroon.
+      if (M.invert && raw > 0.55) {
+        const d = (raw - 0.55) / 0.45;
+        sctx.strokeStyle = `rgb(${Math.round(124 - 34 * d)},${Math.round(30 - 10 * d)},${Math.round(40 - 12 * d)})`;
+        sctx.lineWidth = s * 0.36;
+        const g2 = s * 0.15, a0 = (c * SUB + i) * s + g2, b0 = (r * SUB + j) * s + g2, a1 = (c * SUB + i + 1) * s - g2, b1 = (r * SUB + j + 1) * s - g2;
+        sctx.beginPath(); sctx.moveTo(a0, b1); sctx.lineTo(a1, b0); sctx.moveTo(a0, b0); sctx.lineTo(a1, b1); sctx.stroke();
+        continue;
+      }
+      if (t < 0.015) continue;                                   // only the very brightest highlights stay bare paper
+      const k = Math.pow(t, 1.1);
+      const col = M.tint.map((v, n) => Math.round(v + (M.shade[n] - v) * k));
+      sctx.strokeStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+      sctx.lineWidth = s * (0.189 + 0.179 * k);
+      const gap = s * (0.227 - 0.084 * k);                       // light stitches are shorter
+      const x0 = (c * SUB + i) * s + gap, y0 = (r * SUB + j) * s + gap;
+      const x1 = (c * SUB + i + 1) * s - gap, y1 = (r * SUB + j + 1) * s - gap;
+      sctx.beginPath();
+      sctx.moveTo(x0, y1); sctx.lineTo(x1, y0);                  // "/" leg
+      if (t > 0.22) { sctx.moveTo(x0, y0); sctx.lineTo(x1, y1); } // "\" leg completes the cross from the mid-tones down
+      sctx.stroke();
+    }
+  }
+
+  // Outside the person: the cloudscape, as SUB x SUB fine blue crosses per cell.
+  // Sky: a soft, moving gradient from the deepest of the sky tones at the top to near-white low down,
+  // with broad brighter patches drifting across like light through thin cloud.
+  let skyImg = null;
+  function drawSkyBg() {
+    const w = Math.ceil(W / SKY_PX), h = Math.ceil(H / SKY_PX);
+    if (skyCanvas.width !== w || skyCanvas.height !== h) { skyCanvas.width = w; skyCanvas.height = h; skyImg = null; }
+    if (!skyImg) skyImg = kctx.createImageData(w, h);
+    const d = skyImg.data, tones = M.skyTones, n = tones.length - 1;
+    const drift = skyTime * 0.55;                                  // in sky pixels per second
+    const sway = 0.08 * Math.sin(skyTime * 0.12);                  // the horizon line rises and falls
+    for (let y = 0; y < h; y++) {
+      const v = y / h;
+      for (let x = 0; x < w; x++) {
+        const glow = fbm((x + drift) / 30, y / 12 + skyTime * 0.02, 31);
+        const val = Math.min(1, Math.max(0, 0.05 + 0.8 * Math.max(0, v + sway) ** 1.4 + 0.45 * (glow - 0.5)));
+        const f = val * n, i = Math.min(n - 1, Math.floor(f)), k = f - i;
+        const a0 = tones[i], a1 = tones[i + 1], o = (y * w + x) * 4;
+        d[o] = a0[0] + (a1[0] - a0[0]) * k; d[o + 1] = a0[1] + (a1[1] - a0[1]) * k;
+        d[o + 2] = a0[2] + (a1[2] - a0[2]) * k; d[o + 3] = 255;
+      }
+    }
+    kctx.putImageData(skyImg, 0, 0);
+  }
+
+  // Step the drift a few times a second: stitches switch on and off as the clouds pass, like a slow
+  // flicker of thread, rather than sliding smoothly.
+  const SKY_TICK = 140;
+  let skyLastTick = 0;
+  function skyLoop(now) {
+    if (!document.hidden && W && now - skyLastTick >= SKY_TICK) {
+      skyLastTick = now;
+      skyTime = now / 1000;
+      buildSky();
+      drawSkyBg();
+      if (live.size && !running) { running = true; requestAnimationFrame(frame); }
+    }
+    requestAnimationFrame(skyLoop);
+  }
+
+  // Sky stitches work like the halftone cloud reference turned to thread on a blue ground: deep blue
+  // crosses fill the open sky, white crosses build the clouds, and the two dither into each other at the
+  // edges, leaving gaps where the blue background shows through as a mid-tone.
+  // Stitches are drawn as real thread rather than flat lines: each leg has a darker edge, a highlight
+  // along one side and diagonal twist marks, and the top leg casts a soft shadow where it crosses.
+  // One image per colour is drawn once and stamped for every stitch.
+  const STITCH_HALF = 0.16, STITCH_W = 0.13;        // in cells: half the cross size, thread width
+  const stitchSprites = new Map();
+  function mix(hex, to, f) {
+    const n = parseInt(hex.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255];
+    return `rgb(${c.map(v => Math.round(v + (to - v) * f)).join(',')})`;
+  }
+  function stitchSprite(colour) {
+    const key = colour + '|' + cell.toFixed(2) + '|' + DPR + '|' + (M.invert ? 'dark' : 'light');
+    let sp = stitchSprites.get(key);
+    if (sp) return sp;
+    const half = cell * STITCH_HALF, w = cell * STITCH_W, size = 2 * half + w * 1.6;
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = Math.ceil(size * DPR);
+    const g = cv.getContext('2d');
+    g.setTransform(DPR, 0, 0, DPR, 0, 0);
+    g.lineCap = 'round';
+    const m = size / 2;
+    const leg = (x0, y0, x1, y1, twistDir) => {
+      const len = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / len, uy = (y1 - y0) / len, nx = -uy, ny = ux;
+      g.strokeStyle = mix(colour, 0, 0.24); g.lineWidth = w;                      // edge
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+      g.strokeStyle = colour; g.lineWidth = w * 0.8;                                // body
+      g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
+      g.strokeStyle = mix(colour, 255, 0.4); g.lineWidth = w * 0.18;                // sheen along one side
+      g.beginPath(); g.moveTo(x0 - nx * w * 0.17, y0 - ny * w * 0.17); g.lineTo(x1 - nx * w * 0.17, y1 - ny * w * 0.17); g.stroke();
+      g.strokeStyle = mix(colour, 0, 0.35); g.globalAlpha = 0.4; g.lineWidth = Math.max(0.5, w * 0.1);
+      g.lineCap = 'butt';
+      for (let d = w * 0.5; d < len - w * 0.3; d += w * 0.7) {                      // twist of the plies
+        const cx = x0 + ux * d, cy = y0 + uy * d, tx = (nx + ux * 0.7 * twistDir) * w * 0.36, ty = (ny + uy * 0.7 * twistDir) * w * 0.36;
+        g.beginPath(); g.moveTo(cx - tx, cy - ty); g.lineTo(cx + tx, cy + ty); g.stroke();
+      }
+      g.globalAlpha = 1; g.lineCap = 'round';
+    };
+    leg(m - half, m - half, m + half, m + half, 1);                                 // bottom leg "\"
+    g.strokeStyle = M.invert ? 'rgba(0,0,0,0)' : 'rgba(0,0,0,0.16)';                // shadow of the top leg (none in charcoal)
+    g.lineWidth = w * 1.25;
+    g.beginPath(); g.moveTo(m - half + w * 0.15, m + half + w * 0.15); g.lineTo(m + half + w * 0.15, m - half + w * 0.15); g.stroke();
+    leg(m - half, m + half, m + half, m - half, -1);                                // top leg "/"
+    sp = { cv, size };
+    stitchSprites.set(key, sp);
+    return sp;
+  }
+
+  function drawSkyCell(c, r, alpha) {
+    // Sky stitches sit on their own, tighter grid; this cell draws the ones whose centres fall inside it.
+    const p = cell / SKY_DENSITY, fc = Math.ceil(cols * SKY_DENSITY);
+    const i0 = Math.ceil(c * SKY_DENSITY - 0.5), i1 = Math.ceil((c + 1) * SKY_DENSITY - 0.5);
+    const j0 = Math.ceil(r * SKY_DENSITY - 0.5), j1 = Math.ceil((r + 1) * SKY_DENSITY - 0.5);
+    const threads = [M.sky, M.cloudWarm, M.cloudShade, M.skyLight, M.skyWhite];
+    sctx.globalAlpha = alpha;
+    for (let y = j0; y < j1; y++) for (let x = i0; x < i1; x++) {
+      const v = sky[y * fc + x], t = BAYER[(y & 3) * 4 + (x & 3)], t2 = BAYER[((y + 2) & 3) * 4 + ((x + 1) & 3)];
+      // Three blues build the form, from v (0 = sunlit cloud top, 1 = deep sky): almost-white on the
+      // lit faces of the clouds, light blue in their shade and in the hazy low sky, and the darkest blue
+      // in open sky overhead. Neighbouring tones dither into each other, and sunlit tops stay sparse so
+      // the cloth shows through as the brightest highlight. A rare warm or lavender stitch adds colour.
+      // On white cloth the sunlit tops are left sparse; on charcoal the clouds are stitched densely and
+      // the sky thinly, so the clouds still read as the brightest forms.
+      const cover = M.invert ? (v < 0.28 ? 0.95 : v < 0.6 ? 0.72 : 0.55)
+                             : (v < 0.1 ? 0.24 : v < 0.28 ? 0.72 : 1.01);
+      if (cover <= t2) continue;
+      if (wordClear.has(x + ',' + y)) continue;          // keep the stitched name clear of sky stitches
+      const tone = Math.max(0, Math.min(2, Math.floor(v * 2.25 + (t - 0.5) * 0.7)));
+      let g = [4, 3, 0][tone];
+      const h = hash(x, y, 131);
+      if (v < 0.14 && h < 0.03) g = 1;
+      else if (v > 0.24 && v < 0.45 && h < 0.05) g = 2;
+      if (g < 0) continue;
+      const sp = stitchSprite(threads[g]);
+      sctx.drawImage(sp.cv, (x + 0.5) * p - sp.size / 2, (y + 0.5) * p - sp.size / 2, sp.size, sp.size);
+    }
+  }
+
+
+
+
+  // ---- Hidden words: pixel lettering on the stitch grid, revealed with the sky ----
+  // Each glyph is a chart 7 pixels tall; each pixel is a solid square block of colour, like the
+  // grid-built type in the reference.
+  const GLYPHS = {
+    A: ['.XXX.', 'X...X', 'X...X', 'XXXXX', 'X...X', 'X...X', 'X...X'],
+    H: ['X...X', 'X...X', 'X...X', 'XXXXX', 'X...X', 'X...X', 'X...X'],
+    I: ['XXX', '.X.', '.X.', '.X.', '.X.', '.X.', 'XXX'],
+    K: ['X...X', 'X..X.', 'X.X..', 'XX...', 'X.X..', 'X..X.', 'X...X'],
+    M: ['X...X', 'XX.XX', 'X.X.X', 'X.X.X', 'X...X', 'X...X', 'X...X'],
+    N: ['X...X', 'XX..X', 'X.X.X', 'X..XX', 'X...X', 'X...X', 'X...X'],
+    S: ['.XXXX', 'X....', 'X....', '.XXX.', '....X', '....X', 'XXXX.'],
+    U: ['X...X', 'X...X', 'X...X', 'X...X', 'X...X', 'X...X', '.XXX.'],
+    a: ['.....', '.....', '.XXX.', '....X', '.XXXX', 'X...X', '.XXXX'],
+    h: ['X....', 'X....', 'XXXX.', 'X...X', 'X...X', 'X...X', 'X...X'],
+    i: ['X', '.', 'X', 'X', 'X', 'X', 'X'],
+    k: ['X...', 'X...', 'X..X', 'X.X.', 'XX..', 'X.X.', 'X..X'],
+    m: ['.....', '.....', 'XX.X.', 'X.X.X', 'X.X.X', 'X.X.X', 'X.X.X'],
+    n: ['.....', '.....', 'XXXX.', 'X...X', 'X...X', 'X...X', 'X...X'],
+    s: ['.....', '.....', '.XXXX', 'X....', '.XXX.', '....X', 'XXXX.'],
+    u: ['.....', '.....', 'X...X', 'X...X', 'X...X', 'X...X', '.XXXX'],
+    ',': ['.', '.', '.', '.', '.', 'X', 'X'],
+    "'": ['X', 'X', '.', '.', '.', '.', '.'],
+    ' ': ['..', '..', '..', '..', '..', '..', '..'],
+  };
+  // Layout after the sketch: a small greeting over a large name, centred above the head.
+  // size: pixel size in cells. y: top as a share of the banner height.
+  const WORDS = [
+    { text: 'ANUSHKA', size: 0.75, y: 0.13, drop: 0.3, bold: false, textBold: true, stitched: true, colour: 'word', textColour: 'wordText' },
+    { text: "Hi, I'm", size: 0.375, plainOnly: true, italic: true, above: 0, gap: 1, colour: 'wordSmall' },   // left-aligned over WORDS[0]
+  ];
+  let wordPix = null, wordClear = new Set();          // wordClear: sky stitch positions left bare round stitched letters                                      // per cell: list of [x, y, size, word]
+  // Bold: every pixel also fills the one to its right, thickening each stem by a pixel.
+  function glyph(ch, bold) {
+    const g = GLYPHS[ch];
+    if (!bold) return g;
+    return g.map(line => [...line + '.'].map((v, i) => (v === 'X' || line[i - 1] === 'X') ? 'X' : '.').join(''));
+  }
+  function wordWidth(text, bold) { let w = 0; for (const ch of text) w += glyph(ch, bold)[0].length + 1; return w - 1; }
+  function placeWords() {
+    wordPix = new Map(); wordClear = new Set();
+    const at = [];
+    WORDS.forEach((w, k) => {
+      const s = w.size * cell, tw = wordWidth(w.text, w.bold) * s;
+      let x0, y0;
+      if (w.above === undefined) {
+        x0 = Math.round((W - tw) / 2);
+        y0 = Math.round(w.y * H + (w.drop || 0) * 7 * s);          // drop: share of the word's own height
+      } else {
+        const base = at[w.above];
+        x0 = base.x;
+        y0 = base.y - (7 * w.size + w.gap * w.size) * cell;
+      }
+      at[k] = { x: x0, y: y0 };
+      w.box = { x: x0, y: y0, w: tw, h: 7 * s };
+      let x = x0;
+      const rects = [];
+      for (const ch of w.text) {
+        const g = glyph(ch, w.bold);
+        g.forEach((line, gy) => [...line].forEach((on, gx) => { if (on === 'X') rects.push([x + gx * s, y0 + gy * s]); }));
+        x += (g[0].length + 1) * s;
+      }
+      const add = (px, py, item) => {
+        const key = Math.floor(py / cell) * cols + Math.floor(px / cell);
+        if (!wordPix.has(key)) wordPix.set(key, []);
+        wordPix.get(key).push(item);
+      };
+      if (w.plainOnly) return;                            // plain type only: no stitched version on hover
+      if (!w.stitched) { for (const [px, py] of rects) add(px + s / 2, py + s / 2, [px, py, s, k]); return; }
+      // Stitched: cross-stitches on the sky's own stitch grid wherever their centre falls in a letter pixel.
+      const p = cell / SKY_DENSITY, on = new Set(rects.map(([px, py]) => Math.round(px / s) + ',' + Math.round(py / s)));
+      for (let j = Math.floor(y0 / p); j * p < y0 + 7 * s; j++) for (let i = Math.floor(x0 / p); i * p < x; i++) {
+        const cx = (i + 0.5) * p, cy = (j + 0.5) * p;
+        if (!on.has(Math.floor(cx / s) + ',' + Math.floor(cy / s))) continue;
+        add(cx, cy, [cx, cy, 0, k]);
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) wordClear.add((i + di) + ',' + (j + dj));
+      }
+    });
+  }
+  // At rest the greeting shows as plain type (Space Mono, a grid-built Google font) in the same
+  // place as the stitched lettering. Wherever stitches are showing, the type is wiped away cell by
+  // cell, in step with each stitch's fade, so the stitched version takes over and hands back.
+  const NAME_FONT = '"Space Mono", ui-monospace, monospace';
+  function drawNameText(ps) {
+    if (!W || !WORDS[0].box) return;
+    nctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    nctx.clearRect(0, 0, W, H);
+    nctx.globalCompositeOperation = 'source-over';
+    nctx.globalAlpha = 1;
+    nctx.textBaseline = 'alphabetic';
+    const drawWord = (w) => {
+      const b = w.box, weight = w.textBold ? 700 : 400;
+      nctx.font = `${weight} ${b.h * 1.3}px ${NAME_FONT}`;
+      const m = nctx.measureText(w.text), size = Math.min(b.h / 0.7, b.h * 1.3 * b.w / m.width);  // cap height = stitched height
+      nctx.font = `${w.italic ? 'italic ' : ''}${weight} ${size}px ${NAME_FONT}`;
+      nctx.fillStyle = M[w.textColour || w.colour];
+      const indent = (w.indent || 0) * nctx.measureText(' ').width;   // in character widths
+      nctx.fillText(w.text, b.x + indent, b.y + b.h);
+    };
+    WORDS.forEach(drawWord);
+    if (ps) wipe(ps);                                            // under the cursor the plain type gives way
+  }
+  function wipe(ps) {
+    nctx.globalCompositeOperation = 'destination-out';
+    const ws = WORDS;
+    const top = Math.min(...ws.map(w => w.box.y)) - cell, bottom = Math.max(...ws.map(w => w.box.y + w.box.h)) + cell;
+    for (let i = 0; i < ps.length; i += 3) {
+      const y = ps[i + 1] * cell;
+      if (y < top || y > bottom) continue;
+      nctx.globalAlpha = ps[i + 2];
+      nctx.fillRect(ps[i] * cell - 0.5, y - 0.5, cell + 1, cell + 1);
+    }
+    nctx.globalCompositeOperation = 'source-over';
+    nctx.globalAlpha = 1;
+  }
+
+  function drawWordPixels(list, alpha) {
+    sctx.globalAlpha = alpha;
+    for (const [x, y, s, k] of list) {
+      if (s === 0) {                                       // a stitch
+        const sp = stitchSprite(M[WORDS[k].colour]);
+        sctx.drawImage(sp.cv, x - sp.size / 2, y - sp.size / 2, sp.size, sp.size);
+        continue;
+      }
+      sctx.fillStyle = M[WORDS[k].colour];
+      const bx0 = Math.floor(x * DPR) / DPR, bx1 = Math.floor((x + s) * DPR) / DPR;
+      const by0 = Math.floor(y * DPR) / DPR, by1 = Math.floor((y + s) * DPR) / DPR;
+      sctx.fillRect(bx0, by0, bx1 - bx0, by1 - by0);
+    }
+  }
+
+  function drawStitch(c, r, alpha) {
+    if (person && person[r * cols + c] > 0) return drawPortraitCell(c, r, alpha);  // any cell touching her is stitched as her
+    drawSkyCell(c, r, alpha);
+  }
+
+
+  function frame(now) {
+    sctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    sctx.clearRect(0, 0, W, H);
+    sctx.lineCap = 'round';
+    // Backings for the portrait go down first and all stitches after, so a thick stitch that reaches
+    // into the next cell is never cut off by that cell's backing (which showed as thin dark seams).
+    const ps = [];
+    for (const [k, s] of live) {
+      const age = now - s.t;
+      if (age >= LIFE) { live.delete(k); continue; }
+      ps.push(s.c, s.r, age < LIFE - FADE ? 1 : (LIFE - age) / FADE);
+    }
+    for (let i = 0; i < ps.length; i += 3) if (person && person[ps[i + 1] * cols + ps[i]] > 0) drawPortraitBacking(ps[i], ps[i + 1], ps[i + 2]);
+    for (let i = 0; i < ps.length; i += 3) drawStitch(ps[i], ps[i + 1], ps[i + 2]);
+    drawNameText(ps);
+    if (wordPix) for (let i = 0; i < ps.length; i += 3) { const l = wordPix.get(ps[i + 1] * cols + ps[i]); if (l) drawWordPixels(l, ps[i + 2]); }
+    sctx.globalAlpha = 1;
+    if (live.size) requestAnimationFrame(frame);
+    else running = false;
+  }
+
+
+  // ---- Bird: a stitched dove that flies toward the cursor ---------------
+  // Seen from above, built on a dove's real structure: a plump body, small head, a wide fanned tail and
+  // wings with a broad arm and a tapering hand. Flapping is one smooth cycle: fully spread on the
+  // downstroke, folding back at the wrist on the upstroke. The shape is tested cell by cell
+  // on a fine screen-aligned grid, so at any heading it stays made of upright crosses.
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const bird = { x: 0, y: 0, vx: 0, vy: 0, heading: 0, phase: 0, alpha: 0, started: false };
+  let pointer = null, birdRunning = false, birdLast = 0;
+
+  // One wing on side sd (+1 or -1), built like a real wing: a broad inner arm from the shoulder to the
+  // wrist, then a tapering hand of primaries. k = 1 fully spread (downstroke), 0 folded at the wrist
+  // (upstroke). Tested as distance from a curved centreline. Local units are stitches, head toward +x.
+  const WING_SEGS = 14;
+  function inWing(lx, ly, sd, k) {
+    const arm = 7, hand = 10 * (0.78 + 0.22 * k);
+    const L = arm + hand, step = L / WING_SEGS;
+    const armAng = -0.12 + 0.3 * (1 - k);              // arm reaches out a touch forward when spread
+    const handAng = 0.3 + 0.8 * (1 - k);               // hand sweeps back from the wrist, more when folding
+    let x = -0.6, y = sd * 1.3;                        // mid-chord at the shoulder
+    for (let i = 0; i < WING_SEGS; i++) {
+      const t0 = i / WING_SEGS, tm = (i + 0.5) / WING_SEGS;
+      const bend = Math.min(1, Math.max(0, (tm * L - arm + 1.5) / 3));   // wrist: arm turns into hand
+      const ang = armAng + (handAng - armAng) * bend * bend * (3 - 2 * bend);
+      const nx = x - Math.sin(ang) * step, ny = y + sd * Math.cos(ang) * step;
+      const ex = nx - x, ey = ny - y;
+      const q = Math.max(0, Math.min(1, ((lx - x) * ex + (ly - y) * ey) / (step * step)));
+      const d = (t0 + q / WING_SEGS) * L;                                // distance along the wing
+      const w = d < arm ? 3.3 - 0.15 * d / arm                           // broad, even arm
+                        : 3.15 * (1 - ((d - arm) / hand) ** 1.6) + 0.5;  // hand tapers to a rounded tip
+      const ddx = lx - (x + ex * q), ddy = ly - (y + ey * q);
+      if (ddx * ddx + ddy * ddy <= w * w) return true;
+      x = nx; y = ny;
+    }
+    return false;
+  }
+
+  function inDove(lx, ly, k) {
+    const ay = Math.abs(ly);
+    const b = 2.7 * (1 - 0.3 * Math.max(0, -lx) / 5);
+    if ((lx / 5) ** 2 + (ly / b) ** 2 <= 1) return true;                              // plump body
+    if ((lx - 5.2) ** 2 + ly * ly <= 2.3) return true;                                // small head
+    if (lx > 6.4 && lx < 7.5 && ay < 0.4) return true;                                // beak
+    const tx = lx + 3.6, tr = Math.hypot(tx, ly);                                    // tail: a wide fan
+    if (tx < 0 && tr <= 7.6 && Math.abs(Math.atan2(ly, -tx)) <= 0.42) return true;
+    return inWing(lx, ly, 1, k) || inWing(lx, ly, -1, k);
+  }
+
+  function drawBird() {
+    bctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    bctx.clearRect(0, 0, W, H);
+    if (bird.alpha <= 0.01) return;
+    const px = cell / 2.5;                                   // bird stitch size
+    const k = 0.5 + 0.5 * Math.cos(bird.phase);              // 1 = wings fully spread, 0 = folded up
+    const cos = Math.cos(bird.heading), sin = Math.sin(bird.heading);
+    const reach = 22 * px;
+    const gx0 = Math.floor((bird.x - reach) / px), gx1 = Math.ceil((bird.x + reach) / px);
+    const gy0 = Math.floor((bird.y - reach) / px), gy1 = Math.ceil((bird.y + reach) / px);
+    const half = px * 0.34;
+    const pts = [];
+    for (let gy = gy0; gy <= gy1; gy++) for (let gx = gx0; gx <= gx1; gx++) {
+      const dx = ((gx + 0.5) * px - bird.x) / px, dy = ((gy + 0.5) * px - bird.y) / px;
+      if (inDove(dx * cos + dy * sin, -dx * sin + dy * cos, k)) pts.push((gx + 0.5) * px, (gy + 0.5) * px);
+    }
+    bctx.globalAlpha = bird.alpha;
+    bctx.lineCap = 'round';
+    bctx.lineWidth = px * 0.42;
+    for (const [colour, off] of [[M.birdShadow, px * 0.25], [M.bird, 0]]) {
+      bctx.strokeStyle = colour;
+      bctx.beginPath();
+      for (let i = 0; i < pts.length; i += 2) {
+        const x = pts[i] + off, y = pts[i + 1] + off;
+        bctx.moveTo(x - half, y - half); bctx.lineTo(x + half, y + half);
+        bctx.moveTo(x + half, y - half); bctx.lineTo(x - half, y + half);
+      }
+      bctx.stroke();
+    }
+    bctx.globalAlpha = 1;
+  }
+
+  function birdFrame(now) {
+    const dt = Math.min(0.05, (now - birdLast) / 1000 || 0.016);
+    birdLast = now;
+    if (pointer) {
+      let tx = pointer.x, ty = pointer.y;
+      const dist = Math.hypot(tx - bird.x, ty - bird.y);
+      if (dist < 70) {                                       // caught up: circle the cursor
+        const a = now / 900;
+        tx += Math.cos(a) * 55; ty += Math.sin(a) * 40;
+      }
+      const d = Math.hypot(tx - bird.x, ty - bird.y) || 1;
+      const speed = Math.min(620, 120 + d * 3);
+      const steer = Math.min(1, dt * 3.2);
+      bird.vx += ((tx - bird.x) / d * speed - bird.vx) * steer;
+      bird.vy += ((ty - bird.y) / d * speed - bird.vy) * steer;
+    } else {                                                 // cursor gone: keep flying the way it was heading
+      bird.vx *= 1 + dt * 0.6; bird.vy *= 1 + dt * 0.6;
+    }
+    bird.x += bird.vx * dt; bird.y += bird.vy * dt;
+    const v = Math.hypot(bird.vx, bird.vy);
+    if (v > 5) {                                             // turn smoothly to face the way it is flying
+      let turn = Math.atan2(bird.vy, bird.vx) - bird.heading;
+      turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+      bird.heading += turn * Math.min(1, dt * 5);
+    }
+    bird.phase += dt * (6 + v / 80);                         // unhurried wingbeats, a little faster at speed
+    bird.alpha = Math.max(0, Math.min(1, bird.alpha + (pointer ? dt * 3 : -dt * 1.6)));
+    drawBird();
+    if (pointer || bird.alpha > 0) requestAnimationFrame(birdFrame);
+    else birdRunning = false;
+  }
+
+  function birdTrack(e) {
+    if (reduceMotion) return;
+    const rect = banner.getBoundingClientRect();
+    pointer = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    if (!bird.started || bird.alpha === 0) {                // enter from behind and below the cursor
+      bird.started = true;
+      bird.x = pointer.x - 180; bird.y = pointer.y + 90;
+      bird.vx = 260; bird.vy = -120; bird.heading = Math.atan2(-120, 260);
+    }
+    if (!birdRunning) { birdRunning = true; birdLast = performance.now(); requestAnimationFrame(birdFrame); }
+  }
+
+  banner.addEventListener('pointermove', (e) => { onMove(e); birdTrack(e); });
+  banner.addEventListener('pointerdown', (e) => { last = null; onMove(e); birdTrack(e); });
+  banner.addEventListener('pointerleave', () => { last = null; pointer = null; });
+  banner.addEventListener('pointerup', (e) => { if (e.pointerType !== 'mouse') { last = null; pointer = null; } });
+
+  // ---- Film grain --------------------------------------------------------
+  function makeGrain() {
+    const size = 256, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const n = Math.round(size * dpr);
+    const c = document.createElement('canvas');
+    c.width = c.height = n;
+    const g = c.getContext('2d');
+    const img = g.createImageData(n, n);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = 128 + (Math.random() + Math.random() + Math.random() - 1.5) * 75;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+      img.data[i + 3] = 255;
+    }
+    g.putImageData(img, 0, 0);
+    document.getElementById('grain').style.backgroundImage = `url(${c.toDataURL()})`;
+  }
+
+  // ---- Charcoal mode toggle -----------------------------------------------
+  const toggle = document.getElementById('modeToggle');
+  function setMode(name) {
+    M = MODES[name];
+    document.documentElement.dataset.mode = name;
+    toggle.setAttribute('aria-pressed', String(name === 'dark'));
+    toggle.setAttribute('aria-label', name === 'dark' ? 'Switch to light mode' : 'Switch to charcoal mode');
+    try { localStorage.setItem('stitch-mode', name); } catch (e) {}
+    if (W) { drawGrid(); drawSkyBg(); sampleTone(); drawNameText(); }
+    if (live.size && !running) { running = true; requestAnimationFrame(frame); }
+  }
+  toggle.addEventListener('pointerdown', (e) => e.stopPropagation());
+  toggle.addEventListener('click', () => setMode(M === MODES.dark ? 'light' : 'dark'));
+  let saved = null;
+  try { saved = localStorage.getItem('stitch-mode'); } catch (e) {}
+  setMode(saved === 'dark' ? 'dark' : 'light');
+
+  if (!reduceMotion) requestAnimationFrame(skyLoop);
+
+  if (document.fonts) Promise.all(['700 40px "Space Mono"', '400 40px "Space Mono"', 'italic 400 40px "Space Mono"'].map(f => document.fonts.load(f))).then(() => drawNameText()).catch(() => {});
+
+  makeGrain();
+  portrait.addEventListener('load', sampleTone);
+  new ResizeObserver(layout).observe(banner);
+  layout();
+</script>
+
+</body></html>
